@@ -88,6 +88,7 @@ def generate_music(
     config: GenerationConfig,
     save_dir: Optional[str] = None,
     progress=None,
+    lora_manager=None,
 ) -> GenerationResult
 ```
 
@@ -216,6 +217,10 @@ class GenerationParams:
     cot_vocal_language: str = "unknown"
     cot_caption: str = ""
     cot_lyrics: str = ""
+
+    # LoRAサポート
+    lora_id: Optional[str] = None
+    lora_scale: float = 1.0
 ```
 
 **GenerationConfig** - バッチと出力設定を含む：
@@ -334,6 +339,13 @@ class GenerationResult:
 | `use_cot_language` | `bool` | `True` | LM CoT推論を使用してボーカル言語を検出。|
 | `use_cot_lyrics` | `bool` | `False` | （将来の使用のために予約）LM CoTを使用して歌詞を生成/改良。|
 | `use_constrained_decoding` | `bool` | `True` | 構造化されたLM出力のための制約付きデコーディングを有効化。|
+
+### LoRAサポートパラメータ
+
+| パラメータ | 型 | デフォルト | 説明 |
+|-----------|------|---------|-------------|
+| `lora_id` | `Optional[str]` | `None` | アップロードされたLoRAアダプターのID。|
+| `lora_scale` | `float` | `1.0` | LoRAアダプターの影響スケール（0.0-1.0）。|
 
 ---
 

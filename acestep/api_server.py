@@ -41,7 +41,7 @@ except ImportError:  # Optional dependency
 
 from fastapi import FastAPI, HTTPException, Request, Depends, Header
 from pydantic import BaseModel, Field
-from starlette.datastructures import UploadFile as StarletteUploadFile
+from fastapi import UploadFile as StarletteUploadFile
 
 from acestep.handler import AceStepHandler
 from acestep.llm_inference import LLMHandler
@@ -56,6 +56,7 @@ from acestep.inference import (
     generate_music,
     create_sample,
     format_sample,
+    understand_music,
 )
 from acestep.gradio_ui.events.results_handlers import _build_generation_info
 from acestep.gpu_config import (
@@ -364,6 +365,8 @@ PARAM_ALIASES = {
     "use_cot_language": ["use_cot_language", "cot_language", "cot-language"],
     "is_format_caption": ["is_format_caption", "isFormatCaption"],
     "allow_lm_batch": ["allow_lm_batch", "allowLmBatch", "parallel_thinking"],
+    "lora_id": ["lora_id", "loraId", "lora"],
+    "lora_scale": ["lora_scale", "loraScale"],
 }
 
 
@@ -468,6 +471,8 @@ class GenerateMusicRequest(BaseModel):
     guidance_scale: float = 7.0
     use_random_seed: bool = True
     seed: int = -1
+    lora_id: Optional[str] = Field(default=None, description="LoRA adapter ID to use")
+    lora_scale: float = 1.0
 
     reference_audio_path: Optional[str] = None
     src_audio_path: Optional[str] = None
@@ -670,6 +675,61 @@ class _JobStore:
                 if rec.status in stats:
                     stats[rec.status] += 1
             return stats
+    
+class LoraManager:
+    """Manages user-uploaded LoRA adapters."""
+    def __init__(self, lora_root: str):
+        self.lora_root = lora_root
+        os.makedirs(self.lora_root, exist_ok=True)
+        self._lock = Lock()
+        self._active_lora_id: Optional[str] = None
+
+    def get_lora_path(self, lora_id: str) -> Optional[str]:
+        if not lora_id:
+            return None
+        path = os.path.join(self.lora_root, lora_id)
+        if os.path.exists(path) and os.path.isdir(path):
+            return path
+        return None
+
+    def list_loras(self) -> List[Dict[str, Any]]:
+        loras = []
+        if not os.path.exists(self.lora_root):
+            return loras
+        for item in os.listdir(self.lora_root):
+            path = os.path.join(self.lora_root, item)
+            if os.path.isdir(path):
+                config_path = os.path.join(path, "adapter_config.json")
+                if os.path.exists(config_path):
+                    loras.append({
+                        "id": item,
+                        "path": path,
+                        "created_at": os.path.getctime(path)
+                    })
+        return sorted(loras, key=lambda x: x["created_at"], reverse=True)
+
+    def register_lora(self, lora_id: str, source_path: str) -> str:
+        """Register a LoRA by moving or extracting files to the lora_root."""
+        target_path = os.path.join(self.lora_root, lora_id)
+        if os.path.exists(target_path):
+            import shutil
+            shutil.rmtree(target_path)
+        
+        os.makedirs(target_path, exist_ok=True)
+        
+        import shutil
+        if os.path.isdir(source_path):
+            for item in os.listdir(source_path):
+                s = os.path.join(source_path, item)
+                d = os.path.join(target_path, item)
+                if os.path.isdir(s):
+                    shutil.copytree(s, d)
+                else:
+                    shutil.copy2(s, d)
+        else:
+            # Handle zip if needed, for now assume it's a dir
+            pass
+        return target_path
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -857,6 +917,10 @@ async def _save_upload_to_temp(upload: StarletteUploadFile, *, prefix: str) -> s
 
 def create_app() -> FastAPI:
     store = _JobStore()
+    
+    project_root = _get_project_root()
+    lora_root = os.path.join(project_root, "checkpoints", "loras")
+    lora_manager = LoraManager(lora_root)
 
     # API Key authentication (from environment variable)
     api_key = os.getenv("ACESTEP_API_KEY", None)
@@ -1116,6 +1180,25 @@ def create_app() -> FastAPI:
             # Use selected handler for generation
             h: AceStepHandler = selected_handler
 
+            # Handle LoRA switching
+            if req.lora_id:
+                lora_path = lora_manager.get_lora_path(req.lora_id)
+                if lora_path:
+                    # Check current LoRA status to avoid redundant reloading
+                    status = h.get_lora_status()
+                    if not status["loaded"] or status.get("lora_id") != req.lora_id:
+                        print(f"[API Server] Job {job_id}: Loading LoRA {req.lora_id}")
+                        h.load_lora(lora_path)
+                        # We might need to patch handler.py to store lora_id in status, 
+                        # but for now we'll just reload if requested to be safe.
+                    h.set_lora_scale(req.lora_scale)
+                else:
+                    print(f"[API Server] Job {job_id}: LoRA {req.lora_id} not found, ignoring")
+            elif h.lora_loaded:
+                # Unload if no LoRA requested but one is loaded
+                print(f"[API Server] Job {job_id}: Unloading LoRA")
+                h.unload_lora()
+
             def _blocking_generate() -> Dict[str, Any]:
                 """Generate music using unified inference logic from acestep.inference"""
 
@@ -1360,6 +1443,9 @@ def create_app() -> FastAPI:
                     repainting_start=req.repainting_start,
                     repainting_end=req.repainting_end if req.repainting_end else -1,
                     audio_cover_strength=req.audio_cover_strength,
+                    # LoRA parameters
+                    lora_id=req.lora_id,
+                    lora_scale=req.lora_scale,
                     # LM parameters
                     thinking=thinking,  # Use LM for code generation when thinking=True
                     lm_temperature=req.lm_temperature,
@@ -1393,15 +1479,36 @@ def create_app() -> FastAPI:
                 llm_is_initialized = getattr(app.state, "_llm_initialized", False)
                 llm_to_pass = llm if llm_is_initialized else None
 
-                # Generate music using unified interface
-                result = generate_music(
-                    dit_handler=h,
-                    llm_handler=llm_to_pass,
-                    params=params,
-                    config=config,
-                    save_dir=app.state.temp_audio_dir,
-                    progress=None,
-                )
+                # Handle LoRA loading if requested
+                lora_loaded_for_this_job = False
+                if req.lora_id:
+                    lora_path = lora_manager.get_lora_path(req.lora_id)
+                    if lora_path:
+                        print(f"[API Server] Loading LoRA {req.lora_id} for job {job_id}")
+                        load_status = h.load_lora(lora_path)
+                        if "✅" in load_status:
+                            h.set_lora_scale(req.lora_scale)
+                            lora_loaded_for_this_job = True
+                        else:
+                            print(f"[API Server] Warning: LoRA load failed: {load_status}")
+                    else:
+                        print(f"[API Server] Warning: LoRA {req.lora_id} not found")
+
+                try:
+                    # Generate music using unified interface
+                    result = generate_music(
+                        dit_handler=h,
+                        llm_handler=llm_to_pass,
+                        params=params,
+                        config=config,
+                        save_dir=app.state.temp_audio_dir,
+                        progress=None,
+                    )
+                finally:
+                    # Unload LoRA after generation to free VRAM or revert to base
+                    if lora_loaded_for_this_job:
+                        print(f"[API Server] Unloading LoRA {req.lora_id} for job {job_id}")
+                        h.unload_lora()
 
                 if not result.success:
                     raise RuntimeError(f"Music generation failed: {result.error or result.status_message}")
@@ -1491,6 +1598,8 @@ def create_app() -> FastAPI:
                     "timesignature": _none_if_na_str(metas_out.get("timesignature")),
                     "lm_model": lm_model_name,
                     "dit_model": dit_model_name,
+                    "lora_id": req.lora_id,
+                    "lora_scale": req.lora_scale if req.lora_id else None,
                 }
 
             t0 = time.time()
@@ -2328,6 +2437,187 @@ def create_app() -> FastAPI:
             })
         except Exception as e:
             return _wrap_response(None, code=500, error=f"format_sample error: {str(e)}")
+
+    async def _ensure_llm_initialized():
+        """Helper to ensure LLM is ready for utility endpoints."""
+        llm: LLMHandler = app.state.llm_handler
+        with app.state._llm_init_lock:
+            if not getattr(app.state, "_llm_initialized", False):
+                if getattr(app.state, "_llm_init_error", None):
+                    raise HTTPException(status_code=500, detail=f"LLM init failed: {app.state._llm_init_error}")
+
+                if getattr(app.state, "_llm_lazy_load_disabled", False):
+                    raise HTTPException(
+                        status_code=503,
+                        detail="LLM not initialized. Set ACESTEP_INIT_LLM=true in .env to enable."
+                    )
+
+                project_root = _get_project_root()
+                checkpoint_dir = os.path.join(project_root, "checkpoints")
+                lm_model_path = os.getenv("ACESTEP_LM_MODEL_PATH", "acestep-5Hz-lm-0.6B").strip()
+                backend = os.getenv("ACESTEP_LM_BACKEND", "vllm").strip().lower()
+                
+                lm_model_name = _get_model_name(lm_model_path)
+                if lm_model_name:
+                    _ensure_model_downloaded(lm_model_name, checkpoint_dir)
+
+                lm_device = os.getenv("ACESTEP_LM_DEVICE", os.getenv("ACESTEP_DEVICE", "auto"))
+                lm_offload = _env_bool("ACESTEP_LM_OFFLOAD_TO_CPU", False)
+
+                h: AceStepHandler = app.state.handler
+                status, ok = llm.initialize(
+                    checkpoint_dir=checkpoint_dir,
+                    lm_model_path=lm_model_path,
+                    backend=backend,
+                    device=lm_device,
+                    offload_to_cpu=lm_offload,
+                    dtype=h.dtype,
+                )
+                if not ok:
+                    app.state._llm_init_error = status
+                    raise HTTPException(status_code=500, detail=f"LLM init failed: {status}")
+                app.state._llm_initialized = True
+        return llm
+
+    @app.post("/v1/prompt/transcribe")
+    async def transcribe_prompt_endpoint(request: Request, authorization: Optional[str] = Header(None)):
+        """Enhance a simple prompt into a rich structured prompt/caption."""
+        body = await request.json() if "json" in (request.headers.get("content-type") or "").lower() else {}
+        verify_token_from_request(body, authorization)
+        
+        prompt = body.get("prompt", "")
+        if not prompt:
+            raise HTTPException(status_code=400, detail="Missing prompt")
+            
+        llm = await _ensure_llm_initialized()
+        
+        try:
+            # Use format_sample to 'transcribe' or enrich the prompt
+            result = format_sample(
+                llm_handler=llm,
+                caption=prompt,
+                lyrics="",
+                temperature=_to_float(body.get("temperature"), 0.85),
+                use_constrained_decoding=True
+            )
+            if not result.success:
+                return _wrap_response(None, code=500, error=result.error)
+            
+            return _wrap_response({
+                "original_prompt": prompt,
+                "enriched_prompt": result.caption,
+                "metadata": {
+                    "bpm": result.bpm,
+                    "key": result.keyscale,
+                    "time_signature": result.timesignature,
+                    "duration": result.duration,
+                    "language": result.language
+                }
+            })
+        except Exception as e:
+            return _wrap_response(None, code=500, error=str(e))
+
+    @app.post("/v1/prompt/understand")
+    async def understand_music_endpoint(
+        request: Request, 
+        authorization: Optional[str] = Header(None)
+    ):
+        """Analyze audio to extract metadata and caption."""
+        form = await request.form()
+        audio_file = form.get("audio")
+        audio_path = form.get("path")
+        
+        verify_token_from_request({}, authorization) # Token check
+        
+        if audio_file:
+            temp_path = await _save_upload_to_temp(audio_file, prefix="understand")
+        elif audio_path:
+            temp_path = audio_path
+        else:
+            raise HTTPException(status_code=400, detail="Missing audio file or path")
+            
+        llm = await _ensure_llm_initialized()
+        h: AceStepHandler = app.state.handler
+        
+        try:
+            # Convert audio to codes using handler's built-in logic
+            # This handles VAE encoding and Model tokenization
+            audio_codes = h.convert_src_audio_to_codes(temp_path)
+            
+            if audio_codes.startswith("❌"):
+                return _wrap_response(None, code=400, error=audio_codes[2:])
+                
+            result = understand_music(
+                llm_handler=llm,
+                audio_codes=audio_codes
+            )
+            
+            if not result.success:
+                return _wrap_response(None, code=500, error=result.error)
+            
+            return _wrap_response({
+                "caption": result.caption,
+                "bpm": result.bpm,
+                "key": result.keyscale,
+                "time_signature": result.timesignature,
+                "duration": result.duration,
+                "lyrics": result.lyrics,
+                "language": result.language
+            })
+        finally:
+            if audio_file and os.path.exists(temp_path):
+                os.remove(temp_path)
+
+    @app.post("/v1/lora/upload")
+    async def upload_lora_endpoint(
+        file: StarletteUploadFile,
+        lora_id: str = Header(None),
+        authorization: Optional[str] = Header(None)
+    ):
+        """Upload and register a LoRA adapter."""
+        verify_token_from_request({}, authorization)
+        
+        if not lora_id:
+            lora_id = f"lora_{uuid4().hex[:8]}"
+            
+        # Save zip to temp
+        temp_zip = await _save_upload_to_temp(file, prefix="lora_upload")
+        
+        try:
+            import zipfile
+            extract_dir = tempfile.mkdtemp(prefix="lora_extract_")
+            with zipfile.ZipFile(temp_zip, 'r') as zip_ref:
+                zip_ref.extractall(extract_dir)
+            
+            # Register with LoraManager
+            actual_path = lora_manager.register_lora(lora_id, extract_dir)
+            import shutil
+            shutil.rmtree(extract_dir)
+            
+            return _wrap_response({
+                "lora_id": lora_id,
+                "status": "registered",
+                "path": actual_path
+            })
+        finally:
+            if os.path.exists(temp_zip):
+                os.remove(temp_zip)
+
+    @app.get("/v1/lora/list")
+    async def list_loras_endpoint(_: None = Depends(verify_api_key)):
+        """List all registered LoRA adapters."""
+        return _wrap_response({"loras": lora_manager.list_loras()})
+
+    @app.delete("/v1/lora/{lora_id}")
+    async def delete_lora_endpoint(lora_id: str, _: None = Depends(verify_api_key)):
+        """Delete a registered LoRA adapter."""
+        target_path = lora_manager.get_lora_path(lora_id)
+        if not target_path:
+            raise HTTPException(status_code=404, detail="LoRA not found")
+            
+        import shutil
+        shutil.rmtree(target_path)
+        return _wrap_response({"status": "deleted", "lora_id": lora_id})
 
     @app.get("/v1/audio")
     async def get_audio(path: str, _: None = Depends(verify_api_key)):

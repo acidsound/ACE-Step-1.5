@@ -141,6 +141,8 @@ APIはほとんどのパラメータで **snake_case** と **camelCase** の両�
 | `thinking` | bool | `false` | 5Hz LMを使用してオーディオコードを生成するかどうか（lm-dit動作）|
 | `vocal_language` | string | `"en"` | 歌詞の言語（en、zh、jaなど）|
 | `audio_format` | string | `"mp3"` | 出力形式（mp3、wav、flac）|
+| `lora_id` | string | null | (オプション) 生成に使用するLoRAアダプターID |
+| `lora_scale` | float | `1.0` | (オプション) LoRAの影響スケール |
 
 **サンプル/説明モードパラメータ**：
 
@@ -424,61 +426,93 @@ curl -X POST http://localhost:8001/query_result \
 
 ---
 
-## 6. 入力のフォーマット
+## 6. プロンプトとオーディオのユーティリティ
 
-### 6.1 API 定義
+5Hz言語モデルを使用してプロンプトの準備やオーディオの分析を支援するエンドポイント。
+
+### 6.1 入力のフォーマット (レガシー)
 
 - **URL**：`/format_input`
 - **メソッド**：`POST`
 
-このエンドポイントはLLMを使用してユーザー提供のcaptionとlyricsを強化・フォーマットします。
+ユーザー提供のcaptionとlyricsを強化・フォーマットするレガシーエンドポイント。
 
-### 6.2 リクエストパラメータ
+#### リクエストパラメータ
 
 | パラメータ名 | 型 | デフォルト | 説明 |
 | :--- | :--- | :--- | :--- |
 | `prompt` | string | `""` | 音楽の説明プロンプト |
 | `lyrics` | string | `""` | 歌詞の内容 |
 | `temperature` | float | `0.85` | LMサンプリング温度 |
-| `param_obj` | string (JSON) | `"{}"` | メタデータを含むJSONオブジェクト（duration、bpm、key、time_signature、language）|
+| `param_obj` | string (JSON) | `"{}"` | メタデータを含むJSONオブジェクト |
 
-### 6.3 レスポンス例
+### 6.2 プロンプトの文字起こし
 
-```json
-{
-  "data": {
-    "caption": "強化された音楽の説明",
-    "lyrics": "フォーマットされた歌詞...",
-    "bpm": 120,
-    "key_scale": "C Major",
-    "time_signature": "4",
-    "duration": 180,
-    "vocal_language": "ja"
-  },
-  "code": 200,
-  "error": null,
-  "timestamp": 1700000000000,
-  "extra": null
-}
-```
+- **URL**：`/v1/prompt/transcribe`
+- **メソッド**：`POST`
 
-### 6.4 使用例
+シンプルなテキストプロンプトを、メタデータを含むリッチで構造化された音楽キャプションに強化します。
 
-```bash
-curl -X POST http://localhost:8001/format_input \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "prompt": "ポップロック",
-    "lyrics": "街を歩いて",
-    "param_obj": "{\"duration\": 180, \"language\": \"ja\"}"
-  }'
-```
+#### リクエストパラメータ (JSON)
+
+| パラメータ名 | 型 | デフォルト | 説明 |
+| :--- | :--- | :--- | :--- |
+| `prompt` | string | 必須 | 強化するシンプルなプロンプト |
+| `temperature` | float | `0.85` | サンプリング温度 |
+
+### 6.3 音楽の理解
+
+- **URL**：`/v1/prompt/understand`
+- **メソッド**：`POST`
+- **Content-Type**：`multipart/form-data`
+
+オーディオファイルを分析して、その音楽的特性（BPM、キー、時間）を抽出し、説明的なキャプションを生成します。
+
+#### リクエストパラメータ
+
+| パラメータ名 | 型 | 説明 |
+| :--- | :--- | :--- |
+| `audio` | ファイル | 分析するオーディオファイル |
+| `path` | string | (代替手段) サーバー上のオーディオファイルへの絶対パス |
 
 ---
 
-## 7. ランダムサンプルの取得
+## 7. LoRA管理
 
-### 7.1 API 定義
+パーソナライズされた音楽生成のためのLoRAアダプターを管理します。
+
+### 7.1 LoRAのアップロード
+
+- **URL**：`/v1/lora/upload`
+- **メソッド**：`POST`
+- **Content-Type**：`multipart/form-data`
+
+#### リクエストパラメータ
+
+| パラメータ名 | 型 | 説明 |
+| :--- | :--- | :--- |
+| `file` | ファイル | LoRAアダプターファイルを含むzipアーカイブ（`adapter_config.json`および`adapter_model.safetensors`を含む必要があります） |
+| `lora_id` | ヘッダー | (オプション) LoRAの一意のID。提供されない場合は自動生成されます。 |
+
+### 7.2 LoRAの一覧
+
+- **URL**：`/v1/lora/list`
+- **メソッド**：`GET`
+
+登録されているすべてのLoRAアダプターのリストを返します。
+
+### 7.3 LoRAの削除
+
+- **URL**：`/v1/lora/{lora_id}`
+- **メソッド**：`DELETE`
+
+登録されているLoRAアダプターとそのファイルを削除します。
+
+---
+
+## 8. ランダムサンプルの取得
+
+### 8.1 API 定義
 
 - **URL**：`/create_random_sample`
 - **メソッド**：`POST`

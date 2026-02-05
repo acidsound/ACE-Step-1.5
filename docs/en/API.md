@@ -141,6 +141,8 @@ Suitable for passing only text parameters, or referencing audio file paths that 
 | `thinking` | bool | `false` | Whether to use 5Hz LM to generate audio codes (lm-dit behavior) |
 | `vocal_language` | string | `"en"` | Lyrics language (en, zh, ja, etc.) |
 | `audio_format` | string | `"mp3"` | Output format (mp3, wav, flac) |
+| `lora_id` | string | null | (Optional) LoRA adapter ID to use for generation |
+| `lora_scale` | float | `1.0` | (Optional) LoRA influence scale |
 
 **Sample/Description Mode Parameters**:
 
@@ -411,6 +413,8 @@ curl -X POST http://localhost:8001/release_task \
 | `seed_value` | string | Seed values used (comma-separated) |
 | `lm_model` | string | LM model name used |
 | `dit_model` | string | DiT model name used |
+| `lora_id` | string | LoRA ID used for generation |
+| `lora_alpha` | float | LoRA alpha (strength) used |
 
 ### 5.4 Usage Example
 
@@ -424,74 +428,106 @@ curl -X POST http://localhost:8001/query_result \
 
 ---
 
-## 6. Format Input
+## 6. Prompt & Audio Utilities
 
-### 6.1 API Definition
+Endpoints to help prepare prompts or analyze audio using the 5Hz Language Model.
+
+### 6.1 Format Input (Legacy)
 
 - **URL**: `/format_input`
 - **Method**: `POST`
 
-This endpoint uses LLM to enhance and format user-provided caption and lyrics.
+Legacy endpoint to enhance and format user-provided caption and lyrics.
 
-### 6.2 Request Parameters
+#### Request Parameters
 
 | Parameter Name | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `prompt` | string | `""` | Music description prompt |
 | `lyrics` | string | `""` | Lyrics content |
 | `temperature` | float | `0.85` | LM sampling temperature |
-| `param_obj` | string (JSON) | `"{}"` | JSON object containing metadata (duration, bpm, key, time_signature, language) |
+| `param_obj` | string (JSON) | `"{}"` | JSON object containing metadata |
 
-### 6.3 Response Example
+### 6.2 Transcribe Prompt
 
-```json
-{
-  "data": {
-    "caption": "Enhanced music description",
-    "lyrics": "Formatted lyrics...",
-    "bpm": 120,
-    "key_scale": "C Major",
-    "time_signature": "4",
-    "duration": 180,
-    "vocal_language": "en"
-  },
-  "code": 200,
-  "error": null,
-  "timestamp": 1700000000000,
-  "extra": null
-}
-```
+- **URL**: `/v1/prompt/transcribe`
+- **Method**: `POST`
 
-### 6.4 Usage Example
+Enhance a simple text prompt into a rich, structured music caption with metadata.
 
-```bash
-curl -X POST http://localhost:8001/format_input \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "prompt": "pop rock",
-    "lyrics": "Walking down the street",
-    "param_obj": "{\"duration\": 180, \"language\": \"en\"}"
-  }'
-```
+#### Request Parameters (JSON)
+
+| Parameter Name | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `prompt` | string | required | The simple prompt to enrich |
+| `temperature` | float | `0.85` | Sampling temperature |
+
+### 6.3 Understand Music
+
+- **URL**: `/v1/prompt/understand`
+- **Method**: `POST`
+- **Content-Type**: `multipart/form-data`
+
+Analyze an audio file to extract its musical properties (BPM, Key, Duration) and generate a descriptive caption.
+
+#### Request Parameters
+
+| Parameter Name | Type | Description |
+| :--- | :--- | :--- |
+| `audio` | File | The audio file to analyze |
+| `path` | string | (Alternative) Absolute path to audio file on server |
 
 ---
 
-## 7. Get Random Sample
+## 7. LoRA Management
 
-### 7.1 API Definition
+Manage LoRA adapters for personalized music generation.
+
+### 7.1 Upload LoRA
+
+- **URL**: `/v1/lora/upload`
+- **Method**: `POST`
+- **Content-Type**: `multipart/form-data`
+
+#### Request Parameters
+
+| Parameter Name | Type | Description |
+| :--- | :--- | :--- |
+| `file` | File | Zip archive containing the LoRA adapter files (must include `adapter_config.json` and `adapter_model.safetensors`) |
+| `lora_id` | Header | (Optional) Unique ID for the LoRA. Auto-generated if not provided. |
+
+### 7.2 List LoRAs
+
+- **URL**: `/v1/lora/list`
+- **Method**: `GET`
+
+Returns a list of all registered LoRA adapters.
+
+### 7.3 Delete LoRA
+
+- **URL**: `/v1/lora/{lora_id}`
+- **Method**: `DELETE`
+
+Delete a registered LoRA adapter and its files.
+
+---
+
+## 8. Get Random Sample
+
+### 8.1 API Definition
 
 - **URL**: `/create_random_sample`
 - **Method**: `POST`
 
 This endpoint returns random sample parameters from pre-loaded example data for form filling.
 
-### 7.2 Request Parameters
+### 8.2 Request Parameters
 
 | Parameter Name | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `sample_type` | string | `"simple_mode"` | Sample type: `"simple_mode"` or `"custom_mode"` |
 
-### 7.3 Response Example
+### 8.3 Response Example
 
 ```json
 {
@@ -511,7 +547,7 @@ This endpoint returns random sample parameters from pre-loaded example data for 
 }
 ```
 
-### 7.4 Usage Example
+### 8.4 Usage Example
 
 ```bash
 curl -X POST http://localhost:8001/create_random_sample \
@@ -521,16 +557,16 @@ curl -X POST http://localhost:8001/create_random_sample \
 
 ---
 
-## 8. List Available Models
+## 9. List Available Models
 
-### 8.1 API Definition
+### 9.1 API Definition
 
 - **URL**: `/v1/models`
 - **Method**: `GET`
 
 Returns a list of available DiT models loaded on the server.
 
-### 8.2 Response Example
+### 9.2 Response Example
 
 ```json
 {
@@ -554,7 +590,7 @@ Returns a list of available DiT models loaded on the server.
 }
 ```
 
-### 8.3 Usage Example
+### 9.3 Usage Example
 
 ```bash
 curl http://localhost:8001/v1/models
@@ -562,16 +598,16 @@ curl http://localhost:8001/v1/models
 
 ---
 
-## 9. Server Statistics
+## 10. Server Statistics
 
-### 9.1 API Definition
+### 10.1 API Definition
 
 - **URL**: `/v1/stats`
 - **Method**: `GET`
 
 Returns server runtime statistics.
 
-### 9.2 Response Example
+### 10.2 Response Example
 
 ```json
 {
@@ -594,7 +630,7 @@ Returns server runtime statistics.
 }
 ```
 
-### 9.3 Usage Example
+### 10.3 Usage Example
 
 ```bash
 curl http://localhost:8001/v1/stats
@@ -602,22 +638,22 @@ curl http://localhost:8001/v1/stats
 
 ---
 
-## 10. Download Audio Files
+## 11. Download Audio Files
 
-### 10.1 API Definition
+### 11.1 API Definition
 
 - **URL**: `/v1/audio`
 - **Method**: `GET`
 
 Download generated audio files by path.
 
-### 10.2 Request Parameters
+### 11.2 Request Parameters
 
 | Parameter Name | Type | Description |
 | :--- | :--- | :--- |
 | `path` | string | URL-encoded path to the audio file |
 
-### 10.3 Usage Example
+### 11.3 Usage Example
 
 ```bash
 # Download using the URL from task result
@@ -626,16 +662,16 @@ curl "http://localhost:8001/v1/audio?path=%2Ftmp%2Fapi_audio%2Fabc123.mp3" -o ou
 
 ---
 
-## 11. Health Check
+## 12. Health Check
 
-### 11.1 API Definition
+### 12.1 API Definition
 
 - **URL**: `/health`
 - **Method**: `GET`
 
 Returns service health status.
 
-### 11.2 Response Example
+### 12.2 Response Example
 
 ```json
 {
@@ -653,7 +689,7 @@ Returns service health status.
 
 ---
 
-## 12. Environment Variables
+## 13. Environment Variables
 
 The API server can be configured using environment variables:
 

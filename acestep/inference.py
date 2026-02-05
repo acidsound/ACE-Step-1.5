@@ -143,6 +143,10 @@ class GenerationParams:
     cot_caption: str = ""
     cot_lyrics: str = ""
 
+    # LoRA Support
+    lora_id: Optional[str] = None
+    lora_scale: float = 1.0
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert config to dictionary for JSON serialization."""
         return asdict(self)
@@ -297,6 +301,7 @@ def generate_music(
     config: GenerationConfig,
     save_dir: Optional[str] = None,
     progress=None,
+    lora_manager: Optional[Any] = None,
 ) -> GenerationResult:
     """Generate music using ACE-Step model with optional LM reasoning.
     
@@ -309,6 +314,20 @@ def generate_music(
     Returns:
         GenerationResult with generated audio files and metadata
     """
+    # Handle LoRA loading if requested
+    lora_loaded_for_this_call = False
+    if params.lora_id and lora_manager:
+        lora_path = lora_manager.get_lora_path(params.lora_id)
+        if lora_path:
+            load_status = dit_handler.load_lora(lora_path)
+            if "✅" in load_status:
+                dit_handler.set_lora_scale(params.lora_scale)
+                lora_loaded_for_this_call = True
+            else:
+                logger.warning(f"LoRA load failed: {load_status}")
+        else:
+            logger.warning(f"LoRA {params.lora_id} not found in manager")
+
     try:
         # Phase 1: LM-based metadata and code generation (if enabled)
         audio_code_string_to_use = params.audio_codes
@@ -611,7 +630,7 @@ def generate_music(
         audio_saver = AudioSaver(default_format=audio_format)
 
         # Use handler's temp_dir for saving files
-        if save_dir is not None:
+        if save_dir:
             os.makedirs(save_dir, exist_ok=True)
 
         # Build audios list for GenerationResult with params and save files
@@ -714,6 +733,11 @@ def generate_music(
             success=False,
             error=str(e),
         )
+
+    finally:
+        # Unload LoRA after generation to free VRAM or revert to base
+        if lora_loaded_for_this_call:
+            dit_handler.unload_lora()
 
 
 def understand_music(

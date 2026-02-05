@@ -88,6 +88,7 @@ def generate_music(
     config: GenerationConfig,
     save_dir: Optional[str] = None,
     progress=None,
+    lora_manager=None,
 ) -> GenerationResult
 ```
 
@@ -216,6 +217,10 @@ class GenerationParams:
     cot_vocal_language: str = "unknown"
     cot_caption: str = ""
     cot_lyrics: str = ""
+
+    # LoRA 支持
+    lora_id: Optional[str] = None
+    lora_scale: float = 1.0
 ```
 
 **GenerationConfig** - 包含批处理和输出配置：
@@ -395,6 +400,13 @@ class FormatSampleResult:
 | `use_cot_language` | `bool` | `True` | 使用 LM CoT 推理检测人声语言。|
 | `use_cot_lyrics` | `bool` | `False` | （保留供将来使用）使用 LM CoT 生成/优化歌词。|
 | `use_constrained_decoding` | `bool` | `True` | 启用结构化 LM 输出的约束解码。|
+
+### LoRA 支持参数
+
+| 参数 | 类型 | 默认值 | 说明 |
+|-----------|------|---------|-------------|
+| `lora_id` | `Optional[str]` | `None` | 已上传 LoRA 适配器的 ID。|
+| `lora_scale` | `float` | `1.0` | LoRA 适配器的影响比例 (0.0-1.0)。|
 
 ### CoT 生成的值
 

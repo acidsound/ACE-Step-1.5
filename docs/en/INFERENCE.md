@@ -88,6 +88,7 @@ def generate_music(
     config: GenerationConfig,
     save_dir: Optional[str] = None,
     progress=None,
+    lora_manager=None,
 ) -> GenerationResult
 ```
 
@@ -216,6 +217,10 @@ class GenerationParams:
     cot_vocal_language: str = "unknown"
     cot_caption: str = ""
     cot_lyrics: str = ""
+
+    # LoRA Support
+    lora_id: Optional[str] = None
+    lora_scale: float = 1.0
 ```
 
 **GenerationConfig** - Contains batch and output configuration:
@@ -409,6 +414,13 @@ These fields are automatically populated by the LM when CoT reasoning is enabled
 | `cot_vocal_language` | `str` | `"unknown"` | LM-detected vocal language. |
 | `cot_caption` | `str` | `""` | LM-refined caption. |
 | `cot_lyrics` | `str` | `""` | LM-generated/refined lyrics. |
+
+### LoRA Support Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `lora_id` | `Optional[str]` | `None` | The ID of the uploaded LoRA adapter to use. |
+| `lora_scale` | `float` | `1.0` | The influence scale of the LoRA adapter (0.0-1.0). |
 
 ---
 

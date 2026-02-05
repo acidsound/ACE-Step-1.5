@@ -141,6 +141,8 @@ API 支持大多数参数的 **snake_case** 和 **camelCase** 命名。例如：
 | `thinking` | bool | `false` | 是否使用 5Hz LM 生成音频代码（lm-dit 行为）|
 | `vocal_language` | string | `"en"` | 歌词语言（en、zh、ja 等）|
 | `audio_format` | string | `"mp3"` | 输出格式（mp3、wav、flac）|
+| `lora_id` | string | null | (可选) 用于生成的 LoRA 适配器 ID |
+| `lora_scale` | float | `1.0` | (可选) LoRA 影响权重 |
 
 **样本/描述模式参数**：
 
@@ -424,74 +426,106 @@ curl -X POST http://localhost:8001/query_result \
 
 ---
 
-## 6. 格式化输入
+## 6. 提示词与音频工具
 
-### 6.1 API 定义
+使用 5Hz 语言模型准备提示词或分析音频的端点。
+
+### 6.1 格式化输入 (旧版)
 
 - **URL**：`/format_input`
 - **方法**：`POST`
 
-此端点使用 LLM 增强和格式化用户提供的 caption 和 lyrics。
+用于增强和格式化用户提供的 caption 和 lyrics 的旧版端点。
 
-### 6.2 请求参数
+#### 请求参数
 
 | 参数名 | 类型 | 默认值 | 说明 |
 | :--- | :--- | :--- | :--- |
 | `prompt` | string | `""` | 音乐描述提示词 |
 | `lyrics` | string | `""` | 歌词内容 |
 | `temperature` | float | `0.85` | LM 采样温度 |
-| `param_obj` | string (JSON) | `"{}"` | 包含元数据的 JSON 对象（duration、bpm、key、time_signature、language）|
+| `param_obj` | string (JSON) | `"{}"` | 包含元数据的 JSON 对象 |
 
-### 6.3 响应示例
+### 6.2 提示词转录
 
-```json
-{
-  "data": {
-    "caption": "增强后的音乐描述",
-    "lyrics": "格式化后的歌词...",
-    "bpm": 120,
-    "key_scale": "C Major",
-    "time_signature": "4",
-    "duration": 180,
-    "vocal_language": "zh"
-  },
-  "code": 200,
-  "error": null,
-  "timestamp": 1700000000000,
-  "extra": null
-}
-```
+- **URL**：`/v1/prompt/transcribe`
+- **方法**：`POST`
 
-### 6.4 使用示例
+将简单的文本提示词增强为包含元数据的丰富、结构化的音乐描述。
 
-```bash
-curl -X POST http://localhost:8001/format_input \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "prompt": "流行摇滚",
-    "lyrics": "在街上漫步",
-    "param_obj": "{\"duration\": 180, \"language\": \"zh\"}"
-  }'
-```
+#### 请求参数 (JSON)
+
+| 参数名 | 类型 | 默认值 | 说明 |
+| :--- | :--- | :--- | :--- |
+| `prompt` | string | 必填 | 要增强的简单提示词 |
+| `temperature` | float | `0.85` | 采样温度 |
+
+### 6.3 音乐理解
+
+- **URL**：`/v1/prompt/understand`
+- **方法**：`POST`
+- **Content-Type**：`multipart/form-data`
+
+分析音频文件以提取其音乐属性（BPM、调性、时长）并生成描述性文字。
+
+#### 请求参数
+
+| 参数名 | 类型 | 说明 |
+| :--- | :--- | :--- |
+| `audio` | 文件 | 要分析的音频文件 |
+| `path` | string | (备选) 服务器上音频文件的绝对路径 |
 
 ---
 
-## 7. 获取随机样本
+## 7. LoRA 管理
 
-### 7.1 API 定义
+管理用于个性化音乐生成的 LoRA 适配器。
+
+### 7.1 上传 LoRA
+
+- **URL**：`/v1/lora/upload`
+- **方法**：`POST`
+- **Content-Type**：`multipart/form-data`
+
+#### 请求参数
+
+| 参数名 | 类型 | 说明 |
+| :--- | :--- | :--- |
+| `file` | 文件 | 包含 LoRA 适配器文件的 Zip 归档（必须包含 `adapter_config.json` 和 `adapter_model.safetensors`） |
+| `lora_id` | Header | (可选) LoRA 的唯一 ID。如果不提供则自动生成。 |
+
+### 7.2 列出 LoRA
+
+- **URL**：`/v1/lora/list`
+- **方法**：`GET`
+
+返回所有已注册 LoRA 适配器的列表。
+
+### 7.3 删除 LoRA
+
+- **URL**：`/v1/lora/{lora_id}`
+- **方法**：`DELETE`
+
+删除已注册的 LoRA 适配器及其文件。
+
+---
+
+## 8. 获取随机样本
+
+### 8.1 API 定义
 
 - **URL**：`/create_random_sample`
 - **方法**：`POST`
 
 此端点从预加载的示例数据中返回随机样本参数，用于表单填充。
 
-### 7.2 请求参数
+### 8.2 请求参数
 
 | 参数名 | 类型 | 默认值 | 说明 |
 | :--- | :--- | :--- | :--- |
 | `sample_type` | string | `"simple_mode"` | 样本类型：`"simple_mode"` 或 `"custom_mode"` |
 
-### 7.3 响应示例
+### 8.3 响应示例
 
 ```json
 {
@@ -511,7 +545,7 @@ curl -X POST http://localhost:8001/format_input \
 }
 ```
 
-### 7.4 使用示例
+### 8.4 使用示例
 
 ```bash
 curl -X POST http://localhost:8001/create_random_sample \
@@ -521,16 +555,16 @@ curl -X POST http://localhost:8001/create_random_sample \
 
 ---
 
-## 8. 列出可用模型
+## 9. 列出可用模型
 
-### 8.1 API 定义
+### 9.1 API 定义
 
 - **URL**：`/v1/models`
 - **方法**：`GET`
 
 返回服务器上加载的可用 DiT 模型列表。
 
-### 8.2 响应示例
+### 9.2 响应示例
 
 ```json
 {
@@ -554,7 +588,7 @@ curl -X POST http://localhost:8001/create_random_sample \
 }
 ```
 
-### 8.3 使用示例
+### 9.3 使用示例
 
 ```bash
 curl http://localhost:8001/v1/models
@@ -562,16 +596,16 @@ curl http://localhost:8001/v1/models
 
 ---
 
-## 9. 服务器统计
+## 10. 服务器统计
 
-### 9.1 API 定义
+### 10.1 API 定义
 
 - **URL**：`/v1/stats`
 - **方法**：`GET`
 
 返回服务器运行统计信息。
 
-### 9.2 响应示例
+### 10.2 响应示例
 
 ```json
 {
@@ -594,7 +628,7 @@ curl http://localhost:8001/v1/models
 }
 ```
 
-### 9.3 使用示例
+### 10.3 使用示例
 
 ```bash
 curl http://localhost:8001/v1/stats
@@ -602,22 +636,22 @@ curl http://localhost:8001/v1/stats
 
 ---
 
-## 10. 下载音频文件
+## 11. 下载音频文件
 
-### 10.1 API 定义
+### 11.1 API 定义
 
 - **URL**：`/v1/audio`
-- **方法**：`GET`
+- **Method**: `GET`
 
 通过路径下载生成的音频文件。
 
-### 10.2 请求参数
+### 11.2 请求参数
 
 | 参数名 | 类型 | 说明 |
 | :--- | :--- | :--- |
 | `path` | string | URL 编码的音频文件路径 |
 
-### 10.3 使用示例
+### 11.3 使用示例
 
 ```bash
 # 使用任务结果中的 URL 下载
@@ -626,16 +660,16 @@ curl "http://localhost:8001/v1/audio?path=%2Ftmp%2Fapi_audio%2Fabc123.mp3" -o ou
 
 ---
 
-## 11. 健康检查
+## 12. 健康检查
 
-### 11.1 API 定义
+### 12.1 API 定义
 
 - **URL**：`/health`
 - **方法**：`GET`
 
-返回服务健康状态。
+返回服务健康状态项。
 
-### 11.2 响应示例
+### 12.2 响应示例
 
 ```json
 {
@@ -653,7 +687,7 @@ curl "http://localhost:8001/v1/audio?path=%2Ftmp%2Fapi_audio%2Fabc123.mp3" -o ou
 
 ---
 
-## 12. 环境变量
+## 13. 环境变量
 
 API 服务器可以通过环境变量进行配置：
 
