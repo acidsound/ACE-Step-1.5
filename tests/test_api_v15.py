@@ -120,7 +120,8 @@ def test_lora_lifecycle(base_url: str, api_key: Optional[str] = None) -> bool:
             return False
             
         data = resp.json()
-        lora_list = data.get("loras", [])
+        # Response structure: {'data': {'loras': [...]}, 'code': 200}
+        lora_list = data.get("data", {}).get("loras", [])
         found = any(l["id"] == lora_id for l in lora_list)
         
         print_result("List LoRAs", found, f"Found {lora_id} in list: {found}")
