@@ -97,7 +97,16 @@ def test_lora_lifecycle(base_url: str, api_key: Optional[str] = None) -> bool:
         
         data = resp.json()
         print_result("Upload LoRA", True, f"Response: {data}")
-        
+
+        # Capture actual ID from server response
+        # Structure: {'data': {'lora_id': '...', ...}, 'code': 200, ...}
+        if "data" in data and "lora_id" in data["data"]:
+            lora_id = data["data"]["lora_id"]
+            print(f"       Using server-assigned LoRA ID: {lora_id}")
+        else:
+            print_result("Upload LoRA", False, "lora_id missing in response data")
+            return False
+            
     except Exception as e:
         print_result("Upload LoRA", False, f"Exception: {e}")
         return False
@@ -168,11 +177,12 @@ def test_prompt_transcribe(base_url: str, api_key: Optional[str] = None) -> bool
         print(f"Response: {json.dumps(data, indent=2)}")
         
         # Basic validation
-        if "meta" in data and "caption" in data:
+        # Response structure: {'data': {'metadata': {...}, 'enriched_prompt': ...}, ...}
+        if "data" in data and "metadata" in data["data"] and "enriched_prompt" in data["data"]:
             print_result("Transcribe", True, "Received metadata and caption")
             return True
         else:
-            print_result("Transcribe", False, "Missing keys in response")
+            print_result("Transcribe", False, f"Missing keys in response. Keys found: {data.get('data', {}).keys()}")
             return False
             
     except Exception as e:
