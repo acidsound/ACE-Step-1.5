@@ -694,18 +694,26 @@ class LoraManager:
 
     def list_loras(self) -> List[Dict[str, Any]]:
         loras = []
+        print(f"[DEBUG] list_loras: Checking root {self.lora_root}")
         if not os.path.exists(self.lora_root):
+            print(f"[DEBUG] list_loras: Root does not exist")
             return loras
+            
         for item in os.listdir(self.lora_root):
             path = os.path.join(self.lora_root, item)
+            print(f"[DEBUG] Checking item: {item} -> {path}")
             if os.path.isdir(path):
                 config_path = os.path.join(path, "adapter_config.json")
-                if os.path.exists(config_path):
+                exists = os.path.exists(config_path)
+                print(f"[DEBUG]   Config exists at {config_path}? {exists}")
+                if exists:
                     loras.append({
                         "id": item,
                         "path": path,
                         "created_at": os.path.getctime(path)
                     })
+            else:
+                print(f"[DEBUG]   Not a directory")
         return sorted(loras, key=lambda x: x["created_at"], reverse=True)
 
     def register_lora(self, lora_id: str, source_path: str) -> str:
