@@ -1514,7 +1514,21 @@ def create_app() -> FastAPI:
                     raise RuntimeError(f"Music generation failed: {result.error or result.status_message}")
 
                 # Extract results
+                # Extract results
                 audio_paths = [audio["path"] for audio in result.audios if audio.get("path")]
+                # Extract detailed audio info
+                audio_details = []
+                for audio in result.audios:
+                    if audio.get("path"):
+                        audio_details.append({
+                            "path": audio.get("path"),
+                            "lrc": audio.get("lrc", ""),
+                            "sentence_timestamps": audio.get("sentence_timestamps", []),
+                            "token_timestamps": audio.get("token_timestamps", []),
+                            "lm_score": audio.get("lm_score", 0.0),
+                            "dit_score": audio.get("dit_score", 0.0),
+                        })
+
                 first_audio = audio_paths[0] if len(audio_paths) > 0 else None
                 second_audio = audio_paths[1] if len(audio_paths) > 1 else None
 
@@ -1600,6 +1614,7 @@ def create_app() -> FastAPI:
                     "dit_model": dit_model_name,
                     "lora_id": req.lora_id,
                     "lora_scale": req.lora_scale if req.lora_id else None,
+                    "audio_details": audio_details,
                 }
 
             t0 = time.time()
@@ -2167,24 +2182,49 @@ def create_app() -> FastAPI:
                 status_int = _map_status(rec.status)
 
                 if rec.result and rec.status == "succeeded":
-                    audio_paths = rec.result.get("audio_paths", [])
+                    audio_details = rec.result.get("audio_details", [])
+                    audio_paths = rec.result.get("audio_paths", []) # Fallback
                     metas = rec.result.get("metas", {}) or {}
-                    result_data = [
-                        {
-                            "file": p, "wave": "", "status": status_int,
-                            "create_time": int(create_time), "env": env,
-                            "prompt": metas.get("caption", ""),
-                            "lyrics": metas.get("lyrics", ""),
-                            "metas": {
-                                "bpm": metas.get("bpm"),
-                                "duration": metas.get("duration"),
-                                "genres": metas.get("genres", ""),
-                                "keyscale": metas.get("keyscale", ""),
-                                "timesignature": metas.get("timesignature", ""),
+                    
+                    if audio_details:
+                        result_data = [
+                            {
+                                "file": detail["path"], "wave": "", "status": status_int,
+                                "create_time": int(create_time), "env": env,
+                                "prompt": metas.get("caption", ""),
+                                "lyrics": metas.get("lyrics", ""),
+                                "metas": {
+                                    "bpm": metas.get("bpm"),
+                                    "duration": metas.get("duration"),
+                                    "genres": metas.get("genres", ""),
+                                    "keyscale": metas.get("keyscale", ""),
+                                    "timesignature": metas.get("timesignature", ""),
+                                },
+                                "lrc": detail.get("lrc", ""),
+                                "sentence_timestamps": detail.get("sentence_timestamps", []),
+                                "token_timestamps": detail.get("token_timestamps", []),
+                                "lm_score": detail.get("lm_score", 0.0),
+                                "dit_score": detail.get("dit_score", 0.0),
                             }
-                        }
-                        for p in audio_paths
-                    ] if audio_paths else [{
+                            for detail in audio_details
+                        ]
+                    else:
+                        result_data = [
+                            {
+                                "file": p, "wave": "", "status": status_int,
+                                "create_time": int(create_time), "env": env,
+                                "prompt": metas.get("caption", ""),
+                                "lyrics": metas.get("lyrics", ""),
+                                "metas": {
+                                    "bpm": metas.get("bpm"),
+                                    "duration": metas.get("duration"),
+                                    "genres": metas.get("genres", ""),
+                                    "keyscale": metas.get("keyscale", ""),
+                                    "timesignature": metas.get("timesignature", ""),
+                                }
+                            }
+                            for p in audio_paths
+                        ] if audio_paths else [{
                         "file": "", "wave": "", "status": status_int,
                         "create_time": int(create_time), "env": env,
                         "prompt": metas.get("caption", ""),

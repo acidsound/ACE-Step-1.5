@@ -252,15 +252,90 @@ def test_lora_inference_params(base_url: str, api_key: Optional[str] = None) -> 
         print_result("Inference Request", False, f"Exception: {e}")
         return False
 
-# =============================================================================
-# Main
-# =============================================================================
+    except Exception as e:
+        print_result("Inference Request", False, f"Exception: {e}")
+        return False
+
+def test_full_generation_with_scores(base_url: str, api_key: Optional[str] = None) -> bool:
+    print("\n" + "="*50)
+    print("Test: Full Generation Result (Scores & LRC)")
+    print("="*50)
+    print("⚠️  This test waits for actual generation. Ctrl+C to skip if no GPU.")
+    
+    payload = {
+        "prompt": "Test song for scoring",
+        "lyrics": "[00:00.00] Test lyrics", # Provide lyrics to trigger score calculation
+        "inference_steps": 4, # Use few steps for speed
+        "thinking": False
+    }
+    
+    task_id = None
+    try:
+        # 1. Submit Task
+        resp = requests.post(f"{base_url}/release_task", json=payload, headers=get_headers(api_key))
+        if resp.status_code != 200:
+            print_result("Submit Task", False, f"Status: {resp.status_code}, Avg: {resp.text}")
+            return False
+        
+        data = resp.json()
+        task_id = data.get("data", {}).get("task_id")
+        print_result("Submit Task", True, f"Task ID: {task_id}")
+        
+    except Exception as e:
+        print_result("Submit Task", False, f"Exception: {e}")
+        return False
+
+    # 2. Poll for Result
+    print("   Polling for result (timeout 60s)...")
+    start_time = time.time()
+    while time.time() - start_time < 60:
+        try:
+            resp = requests.post(f"{base_url}/query_result", json={"task_id_list": [task_id]}, headers=get_headers(api_key))
+            if resp.status_code == 200:
+                data = resp.json().get("data", [])
+                if data:
+                    task_info = data[0]
+                    status = task_info.get("status") # 0: running, 1: success, 2: failed
+                    
+                    if status == 1: # Success
+                        result_data = json.loads(task_info.get("result", "[]"))
+                        if not result_data:
+                            print_result("Generation Result", False, "Empty result data")
+                            return False
+                            
+                        first_item = result_data[0]
+                        # Verify fields
+                        has_lrc = "lrc" in first_item
+                        has_lm_score = "lm_score" in first_item
+                        has_dit_score = "dit_score" in first_item
+                        
+                        details = f"LRC: {has_lrc}, LM Score: {has_lm_score}, DiT Score: {has_dit_score}"
+                        print(f"       Fields found: {details}")
+                        
+                        if has_lrc and has_lm_score and has_dit_score:
+                            print_result("Verify Fields", True, "All score/LRC fields present")
+                            return True
+                        else:
+                            print_result("Verify Fields", False, f"Missing fields. Got keys: {list(first_item.keys())}")
+                            return False
+                            
+                    elif status == 2: # Failed
+                        print_result("Generation Status", False, "Task failed on server")
+                        return False
+            
+            time.sleep(2)
+        except Exception as e:
+            print(f"   Polling error: {e}")
+            time.sleep(2)
+            
+    print_result("Generation Status", False, "Timeout waiting for generation")
+    return False
 
 def main():
     parser = argparse.ArgumentParser(description="ACE-Step V1.5 API Test Suite")
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="API Base URL")
     parser.add_argument("--api-key", help="API Key")
-    parser.add_argument("--test", choices=["lora", "prompt", "inference", "all"], default="all")
+    parser.add_argument("--test", choices=["lora", "prompt", "inference", "scores", "all"], default="all")
     
     args = parser.parse_args()
     
@@ -277,6 +352,9 @@ def main():
         
     if args.test in ["inference", "all"]:
         results["inference"] = test_lora_inference_params(args.base_url, args.api_key)
+        
+    if args.test in ["scores", "all"]:
+        results["scores"] = test_full_generation_with_scores(args.base_url, args.api_key)
         
     print("\n" + "="*50)
     print("Final Results")

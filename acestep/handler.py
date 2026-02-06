@@ -2997,6 +2997,89 @@ class AceStepHandler:
                     "tensor": audio_tensor,  # torch.Tensor [channels, samples], CPU, float32
                     "sample_rate": self.sample_rate,
                 }
+                
+                # --- Score and LRC Generation ---
+                # Only if lyrics are present
+                current_lyrics = lyrics_batch[idx] if idx < len(lyrics_batch) else ""
+                
+                # Default values
+                audio_dict["lrc"] = ""
+                audio_dict["sentence_timestamps"] = []
+                audio_dict["token_timestamps"] = []
+                audio_dict["lm_score"] = 0.0
+                audio_dict["dit_score"] = 0.0
+                
+                if current_lyrics and current_lyrics.strip():
+                    try:
+                        # Extract condition tensors for this batch item
+                        # Note: All these are on CPU now because we moved extra_outputs to CPU
+                        # We need to move them back to device for calculation if needed, 
+                        # but get_lyric_* methods handle device movement internally if passed tensors.
+                        
+                        # Helper to get item from batch tensor safely
+                        def get_item(tensor, i):
+                            if tensor is not None and i < tensor.shape[0]:
+                                return tensor[i].unsqueeze(0) # Keep batch dim
+                            return None
+
+                        # pred_latents_cpu is [batch, T, D]
+                        item_pred_latent = get_item(pred_latents_cpu, idx)
+                        
+                        # encoder_hidden_states is [batch, ...] or [2*batch, ...] depending on how it was returned
+                        # It was returned from decoder_outputs, let's assume it matches batch size
+                        item_hidden_states = get_item(extra_outputs["encoder_hidden_states"], idx)
+                        item_attention_mask = get_item(extra_outputs["encoder_attention_mask"], idx)
+                        item_context_latents = get_item(extra_outputs["context_latents"], idx)
+                        
+                        # lyric_token_idss is [batch, seq_len]
+                        item_lyric_ids = get_item(extra_outputs["lyric_token_idss"], idx)
+                        
+                        if (item_pred_latent is not None and 
+                            item_hidden_states is not None and 
+                            item_lyric_ids is not None):
+                            
+                            # 1. Generate Timestamps (LRC)
+                            # Calculate duration from latent length (25Hz)
+                            # latent_length = item_pred_latent.shape[1]
+                            # duration = latent_length / 25.0 
+                            # Better to use actual audio duration if available or requested
+                            calc_duration = audio_tensor.shape[1] / self.sample_rate
+                            
+                            ts_result = self.get_lyric_timestamp(
+                                pred_latent=item_pred_latent,
+                                encoder_hidden_states=item_hidden_states,
+                                encoder_attention_mask=item_attention_mask,
+                                context_latents=item_context_latents,
+                                lyric_token_ids=item_lyric_ids,
+                                total_duration_seconds=calc_duration,
+                                vocal_language=vocal_languages_batch[idx] if idx < len(vocal_languages_batch) else "en"
+                            )
+                            
+                            if ts_result["success"]:
+                                audio_dict["lrc"] = ts_result["lrc_text"]
+                                audio_dict["sentence_timestamps"] = ts_result["sentence_timestamps"]
+                                audio_dict["token_timestamps"] = ts_result["token_timestamps"]
+                            
+                            # 2. Generate Scores
+                            score_result = self.get_lyric_score(
+                                pred_latent=item_pred_latent,
+                                encoder_hidden_states=item_hidden_states,
+                                encoder_attention_mask=item_attention_mask,
+                                context_latents=item_context_latents,
+                                lyric_token_ids=item_lyric_ids,
+                                vocal_language=vocal_languages_batch[idx] if idx < len(vocal_languages_batch) else "en",
+                                inference_steps=inference_steps,
+                                seed=actual_seed_list[idx] if idx < len(actual_seed_list) else 42
+                            )
+                            
+                            if score_result["success"]:
+                                audio_dict["lm_score"] = score_result["lm_score"]
+                                audio_dict["dit_score"] = score_result["dit_score"]
+                                
+                    except Exception as e:
+                        logger.warning(f"[generate_music] Failed to generate score/LRC for item {idx}: {e}")
+                        # traceback.print_exc()
+
                 audios.append(audio_dict)
             
             return {

@@ -680,6 +680,12 @@ def generate_music(
                 "key": audio_key,
                 "sample_rate": sample_rate,
                 "params": audio_params,
+                # Extra outputs (Score & LRC)
+                "lrc": dit_audio.get("lrc", ""),
+                "sentence_timestamps": dit_audio.get("sentence_timestamps", []),
+                "token_timestamps": dit_audio.get("token_timestamps", []),
+                "lm_score": dit_audio.get("lm_score", 0.0),
+                "dit_score": dit_audio.get("dit_score", 0.0),
             }
 
             audios.append(audio_dict)

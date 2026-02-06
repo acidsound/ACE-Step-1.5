@@ -415,6 +415,11 @@ curl -X POST http://localhost:8001/release_task \
 | `dit_model` | string | DiT model name used |
 | `lora_id` | string | LoRA ID used for generation |
 | `lora_alpha` | float | LoRA alpha (strength) used |
+| `lrc` | string | Generated lyrics in LRC format |
+| `lm_score` | float | 5Hz LM likelihood score (indicates lyrics-audio alignment quality) |
+| `dit_score` | float | DiT score (diffusion loss/quality metric) |
+| `sentence_timestamps` | array | Sentence-level timestamps `[{"text": "...", "start": 0.0, "end": 1.0}, ...]` |
+| `token_timestamps` | array | Token-level timestamps |
 
 ### 5.4 Usage Example
 

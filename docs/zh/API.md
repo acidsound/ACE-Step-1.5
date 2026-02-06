@@ -413,6 +413,11 @@ curl -X POST http://localhost:8001/release_task \
 | `seed_value` | string | 使用的种子值（逗号分隔）|
 | `lm_model` | string | 使用的 LM 模型名称 |
 | `dit_model` | string | 使用的 DiT 模型名称 |
+| `lrc` | string | 生成的 LRC 格式歌词 |
+| `lm_score` | float | 5Hz LM 似然分数（表示歌词-音频对齐质量） |
+| `dit_score` | float | DiT 分数（扩散损失/质量指标） |
+| `sentence_timestamps` | array | 句子级时间戳 `[{"text": "...", "start": 0.0, "end": 1.0}, ...]` |
+| `token_timestamps` | array | Token 级时间戳 |
 
 ### 5.4 使用示例
 
