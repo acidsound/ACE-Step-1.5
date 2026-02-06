@@ -929,6 +929,7 @@ def generate_with_progress(
     for idx in range(8):
         path = audio_outputs[idx]
         if path:
+            # Pass path directly; Gradio Audio component with type="filepath" expects a string path
             audio_playback_updates.append(gr.update(value=path, label=f"Sample {idx+1} (Ready)", interactive=True))
             logger.info(f"[generate_with_progress] Audio {idx+1} path: {path}")
         else:
@@ -2007,6 +2008,7 @@ def navigate_to_previous_batch(current_batch_index, batch_queue):
     for idx in range(8):
         if idx < len(real_audio_paths):
             audio_path = real_audio_paths[idx].replace("\\", "/")  # Normalize path
+            # Pass path directly; Gradio Audio component with type="filepath" expects a string path
             audio_updates.append(gr.update(value=audio_path))
         else:
             audio_updates.append(gr.update(value=None))
@@ -2130,6 +2132,7 @@ def navigate_to_next_batch(autogen_enabled, current_batch_index, total_batches, 
     for idx in range(8):
         if idx < len(real_audio_paths):
             audio_path = real_audio_paths[idx].replace("\\", "/")  # Normalize path
+            # Pass path directly; Gradio Audio component with type="filepath" expects a string path
             audio_updates.append(gr.update(value=audio_path))
         else:
             audio_updates.append(gr.update(value=None))
