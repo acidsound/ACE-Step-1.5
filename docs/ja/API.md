@@ -413,6 +413,13 @@ curl -X POST http://localhost:8001/release_task \
 | `seed_value` | string | 使用されたシード値（カンマ区切り）|
 | `lm_model` | string | 使用されたLMモデル名 |
 | `dit_model` | string | 使用されたDiTモデル名 |
+| `lora_id` | string | 生成に使用されたLoRAアダプターのID |
+| `lora_scale` | float | 生成に使用されたLoRAアダプターのスケーリング係数 |
+| `lrc` | string | LRC形式で生成された歌詞 |
+| `lm_score` | float | 5Hz LMの対数尤度スコア（歌詞とオーディオのアライメント品質を示す） |
+| `dit_score` | float | DiTスコア（拡散損失/品質指標） |
+| `sentence_timestamps` | array | 文章レベルのタイムスタンプ `[{"text": "...", "start": 0.0, "end": 1.0}, ...]` |
+| `token_timestamps` | array | トークンレベルのタイムスタンプ |
 
 ### 5.4 使用例
 

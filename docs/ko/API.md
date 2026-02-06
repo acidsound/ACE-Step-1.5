@@ -316,6 +316,8 @@ API는 대부분의 파라미터에 대해 **snake_case**와 **camelCase** 명�
 | `seed_value` | string | 사용된 시드 값 (쉼표로 구분) |
 | `lm_model` | string | 사용된 LM 모델 명 |
 | `dit_model` | string | 사용된 DiT 모델 명 |
+| `lora_id` | string | 생성에 사용된 LoRA 어댑터 ID |
+| `lora_scale` | float | 생성에 사용된 LoRA 어댑터 스케일 |
 | `lrc` | string | LRC 형식의 생성된 가사 |
 | `lm_score` | float | 5Hz LM 우도 점수 (가사-오디오 정렬 품질을 나타냄) |
 | `dit_score` | float | DiT 점수 (확산 손실/품질 지표) |

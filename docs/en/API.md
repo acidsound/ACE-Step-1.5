@@ -413,8 +413,8 @@ curl -X POST http://localhost:8001/release_task \
 | `seed_value` | string | Seed values used (comma-separated) |
 | `lm_model` | string | LM model name used |
 | `dit_model` | string | DiT model name used |
-| `lora_id` | string | LoRA ID used for generation |
-| `lora_alpha` | float | LoRA alpha (strength) used |
+| `lora_id` | string | ID of the LoRA adapter used |
+| `lora_scale` | float | Scale factor of the LoRA adapter used |
 | `lrc` | string | Generated lyrics in LRC format |
 | `lm_score` | float | 5Hz LM likelihood score (indicates lyrics-audio alignment quality) |
 | `dit_score` | float | DiT score (diffusion loss/quality metric) |

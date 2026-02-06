@@ -843,6 +843,8 @@ def _format_audio_result(
     seed_value: str = "",
     lm_model: str = "",
     dit_model: str = "",
+    lora_id: str = "",
+    lora_scale: float = 1.0,
     detail: Optional[Dict[str, Any]] = None,
     error: Optional[str] = None,
 ) -> Dict[str, Any]:
@@ -860,6 +862,8 @@ def _format_audio_result(
         "seed_value": seed_value,
         "lm_model": lm_model,
         "dit_model": dit_model,
+        "lora_id": lora_id,
+        "lora_scale": lora_scale,
         "lrc": "",
         "sentence_timestamps": [],
         "token_timestamps": [],
@@ -1179,6 +1183,8 @@ def create_app() -> FastAPI:
                 seed_value = result.get("seed_value", "")
                 lm_model = result.get("lm_model", "")
                 dit_model = result.get("dit_model", "")
+                lora_id = result.get("lora_id", "")
+                lora_scale = result.get("lora_scale", 1.0)
 
                 if audio_details:
                     result_data = [
@@ -1194,6 +1200,8 @@ def create_app() -> FastAPI:
                             seed_value=seed_value,
                             lm_model=lm_model,
                             dit_model=dit_model,
+                            lora_id=lora_id,
+                            lora_scale=lora_scale,
                             detail=detail
                         )
                         for detail in audio_details
@@ -1211,7 +1219,9 @@ def create_app() -> FastAPI:
                             generation_info=generation_info,
                             seed_value=seed_value,
                             lm_model=lm_model,
-                            dit_model=dit_model
+                            dit_model=dit_model,
+                            lora_id=lora_id,
+                            lora_scale=lora_scale,
                         )
                         for p in audio_paths
                     ]
@@ -1227,7 +1237,9 @@ def create_app() -> FastAPI:
                         generation_info=generation_info,
                         seed_value=seed_value,
                         lm_model=lm_model,
-                        dit_model=dit_model
+                        dit_model=dit_model,
+                        lora_id=lora_id,
+                        lora_scale=lora_scale,
                     )]
             else:
                 # Failed or other status - include error from job store
@@ -2353,6 +2365,8 @@ def create_app() -> FastAPI:
                     seed_value = rec.result.get("seed_value", "")
                     lm_model = rec.result.get("lm_model", "")
                     dit_model = rec.result.get("dit_model", "")
+                    lora_id = rec.result.get("lora_id", "")
+                    lora_scale = rec.result.get("lora_scale", 1.0)
 
                     if audio_details:
                         result_data = [
@@ -2360,7 +2374,9 @@ def create_app() -> FastAPI:
                                 file_path=detail["path"], status_int=status_int, create_time=create_time,
                                 env=env, prompt=final_prompt, lyrics=final_lyrics, metas=metas,
                                 generation_info=generation_info, seed_value=seed_value,
-                                lm_model=lm_model, dit_model=dit_model, detail=detail
+                                lm_model=lm_model, dit_model=dit_model,
+                                lora_id=lora_id, lora_scale=lora_scale,
+                                detail=detail
                             )
                             for detail in audio_details
                         ]
@@ -2370,14 +2386,16 @@ def create_app() -> FastAPI:
                                 file_path=p, status_int=status_int, create_time=create_time,
                                 env=env, prompt=final_prompt, lyrics=final_lyrics, metas=metas,
                                 generation_info=generation_info, seed_value=seed_value,
-                                lm_model=lm_model, dit_model=dit_model
+                                lm_model=lm_model, dit_model=dit_model,
+                                lora_id=lora_id, lora_scale=lora_scale,
                             )
                             for p in audio_paths
                         ] if audio_paths else [_format_audio_result(
                             file_path="", status_int=status_int, create_time=create_time,
                             env=env, prompt=final_prompt, lyrics=final_lyrics, metas=metas,
                             generation_info=generation_info, seed_value=seed_value,
-                            lm_model=lm_model, dit_model=dit_model
+                            lm_model=lm_model, dit_model=dit_model,
+                            lora_id=lora_id, lora_scale=lora_scale,
                         )]
                 else:
                     # Failed or other status
