@@ -168,19 +168,23 @@ def test_prompt_transcribe(base_url: str, api_key: Optional[str] = None) -> bool
         "task_type": "text2music"
     }
     
+    start_time = time.time()
     try:
         resp = requests.post(f"{base_url}/v1/prompt/transcribe", json=payload, headers=get_headers(api_key))
+        duration = time.time() - start_time
+        
         if resp.status_code != 200:
             print_result("Transcribe", False, f"Status: {resp.status_code}, Msg: {resp.text}")
             return False
             
         data = resp.json()
         print(f"Response: {json.dumps(data, indent=2)}")
+        print(f"       Time taken: {duration:.2f}s")
         
         # Basic validation
         # Response structure: {'data': {'metadata': {...}, 'enriched_prompt': ...}, ...}
         if "data" in data and "metadata" in data["data"] and "enriched_prompt" in data["data"]:
-            print_result("Transcribe", True, "Received metadata and caption")
+            print_result("Transcribe", True, f"Received metadata and caption (took {duration:.2f}s)")
             return True
         else:
             print_result("Transcribe", False, f"Missing keys in response. Keys found: {data.get('data', {}).keys()}")

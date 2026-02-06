@@ -831,6 +831,57 @@ def _map_status(status: str) -> int:
     return STATUS_MAP.get(status, 2)
 
 
+def _format_audio_result(
+    file_path: str,
+    status_int: int,
+    create_time: int,
+    env: str,
+    prompt: str,
+    lyrics: str,
+    metas: Dict[str, Any],
+    generation_info: str = "",
+    seed_value: str = "",
+    lm_model: str = "",
+    dit_model: str = "",
+    detail: Optional[Dict[str, Any]] = None,
+    error: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Standardize the audio result dictionary structure."""
+    res = {
+        "file": file_path,
+        "wave": "",
+        "status": status_int,
+        "create_time": int(create_time),
+        "env": env,
+        "prompt": prompt,
+        "lyrics": lyrics,
+        "metas": metas,
+        "generation_info": generation_info,
+        "seed_value": seed_value,
+        "lm_model": lm_model,
+        "dit_model": dit_model,
+        "lrc": "",
+        "sentence_timestamps": [],
+        "token_timestamps": [],
+        "lm_score": 0.0,
+        "dit_score": 0.0,
+    }
+    if detail:
+        # Override with actual values from detail if present
+        if "path" in detail and not file_path:
+            res["file"] = detail["path"]
+        res.update({
+            "lrc": detail.get("lrc", ""),
+            "sentence_timestamps": detail.get("sentence_timestamps", []),
+            "token_timestamps": detail.get("token_timestamps", []),
+            "lm_score": detail.get("lm_score", 0.0),
+            "dit_score": detail.get("dit_score", 0.0),
+        })
+    if error:
+        res["error"] = error
+    return res
+
+
 def _parse_timesteps(s: Optional[str]) -> Optional[List[float]]:
     """Parse comma-separated timesteps string to list of floats."""
     if not s or not s.strip():
@@ -1095,7 +1146,8 @@ def create_app() -> FastAPI:
             status_int = _map_status(status)
 
             if status == "succeeded" and result:
-                audio_paths = result.get("audio_paths", [])
+                audio_details = result.get("audio_details", [])
+                audio_paths = result.get("audio_paths", []) # Fallback
                 # Final prompt/lyrics (may be modified by thinking/format)
                 final_prompt = result.get("prompt", "")
                 final_lyrics = result.get("lyrics", "")
@@ -1113,49 +1165,74 @@ def create_app() -> FastAPI:
                     "prompt": original_prompt,
                     "lyrics": original_lyrics,
                 }
-                # Extra fields for Discord bot
+                # Extra fields
                 generation_info = result.get("generation_info", "")
                 seed_value = result.get("seed_value", "")
                 lm_model = result.get("lm_model", "")
                 dit_model = result.get("dit_model", "")
 
-                if audio_paths:
+                if audio_details:
                     result_data = [
-                        {
-                            "file": p,
-                            "wave": "",
-                            "status": status_int,
-                            "create_time": int(create_time),
-                            "env": env,
-                            "prompt": final_prompt,
-                            "lyrics": final_lyrics,
-                            "metas": metas,
-                            "generation_info": generation_info,
-                            "seed_value": seed_value,
-                            "lm_model": lm_model,
-                            "dit_model": dit_model,
-                        }
+                        _format_audio_result(
+                            file_path=detail["path"],
+                            status_int=status_int,
+                            create_time=create_time,
+                            env=env,
+                            prompt=final_prompt,
+                            lyrics=final_lyrics,
+                            metas=metas,
+                            generation_info=generation_info,
+                            seed_value=seed_value,
+                            lm_model=lm_model,
+                            dit_model=dit_model,
+                            detail=detail
+                        )
+                        for detail in audio_details
+                    ]
+                elif audio_paths:
+                    result_data = [
+                        _format_audio_result(
+                            file_path=p,
+                            status_int=status_int,
+                            create_time=create_time,
+                            env=env,
+                            prompt=final_prompt,
+                            lyrics=final_lyrics,
+                            metas=metas,
+                            generation_info=generation_info,
+                            seed_value=seed_value,
+                            lm_model=lm_model,
+                            dit_model=dit_model
+                        )
                         for p in audio_paths
                     ]
                 else:
-                    result_data = [{
-                        "file": "",
-                        "wave": "",
-                        "status": status_int,
-                        "create_time": int(create_time),
-                        "env": env,
-                        "prompt": final_prompt,
-                        "lyrics": final_lyrics,
-                        "metas": metas,
-                        "generation_info": generation_info,
-                        "seed_value": seed_value,
-                        "lm_model": lm_model,
-                        "dit_model": dit_model,
-                    }]
+                    result_data = [_format_audio_result(
+                        file_path="",
+                        status_int=status_int,
+                        create_time=create_time,
+                        env=env,
+                        prompt=final_prompt,
+                        lyrics=final_lyrics,
+                        metas=metas,
+                        generation_info=generation_info,
+                        seed_value=seed_value,
+                        lm_model=lm_model,
+                        dit_model=dit_model
+                    )]
             else:
                 # Failed or other status - include error from job store
                 error_msg = rec.error if rec and rec.error else None
-                result_data = [{"file": "", "wave": "", "status": status_int, "create_time": int(create_time), "env": env, "error": error_msg}]
+                result_data = [_format_audio_result(
+                    file_path="",
+                    status_int=status_int,
+                    create_time=create_time,
+                    env=env,
+                    prompt="",
+                    lyrics="",
+                    metas={},
+                    error=error_msg
+                )]
 
             result_key = f"{RESULT_KEY_PREFIX}{job_id}"
             local_cache.set(result_key, result_data, ex=RESULT_EXPIRE_SECONDS)
@@ -2244,67 +2321,62 @@ def create_app() -> FastAPI:
                 if rec.result and rec.status == "succeeded":
                     audio_details = rec.result.get("audio_details", [])
                     audio_paths = rec.result.get("audio_paths", []) # Fallback
-                    metas = rec.result.get("metas", {}) or {}
-                    
+                    # Final prompt/lyrics
+                    final_prompt = rec.result.get("prompt", "")
+                    final_lyrics = rec.result.get("lyrics", "")
+                    # Original user input from metas
+                    metas_raw = rec.result.get("metas", {}) or {}
+                    original_prompt = metas_raw.get("prompt", metas_raw.get("caption", ""))
+                    original_lyrics = metas_raw.get("lyrics", "")
+
+                    metas = {
+                        "bpm": metas_raw.get("bpm"),
+                        "duration": metas_raw.get("duration"),
+                        "genres": metas_raw.get("genres", ""),
+                        "keyscale": metas_raw.get("keyscale", ""),
+                        "timesignature": metas_raw.get("timesignature", ""),
+                        "prompt": original_prompt,
+                        "lyrics": original_lyrics,
+                    }
+
+                    # Extra fields
+                    generation_info = rec.result.get("generation_info", "")
+                    seed_value = rec.result.get("seed_value", "")
+                    lm_model = rec.result.get("lm_model", "")
+                    dit_model = rec.result.get("dit_model", "")
+
                     if audio_details:
                         result_data = [
-                            {
-                                "file": detail["path"], "wave": "", "status": status_int,
-                                "create_time": int(create_time), "env": env,
-                                "prompt": metas.get("caption", ""),
-                                "lyrics": metas.get("lyrics", ""),
-                                "metas": {
-                                    "bpm": metas.get("bpm"),
-                                    "duration": metas.get("duration"),
-                                    "genres": metas.get("genres", ""),
-                                    "keyscale": metas.get("keyscale", ""),
-                                    "timesignature": metas.get("timesignature", ""),
-                                },
-                                "lrc": detail.get("lrc", ""),
-                                "sentence_timestamps": detail.get("sentence_timestamps", []),
-                                "token_timestamps": detail.get("token_timestamps", []),
-                                "lm_score": detail.get("lm_score", 0.0),
-                                "dit_score": detail.get("dit_score", 0.0),
-                            }
+                            _format_audio_result(
+                                file_path=detail["path"], status_int=status_int, create_time=create_time,
+                                env=env, prompt=final_prompt, lyrics=final_lyrics, metas=metas,
+                                generation_info=generation_info, seed_value=seed_value,
+                                lm_model=lm_model, dit_model=dit_model, detail=detail
+                            )
                             for detail in audio_details
                         ]
                     else:
                         result_data = [
-                            {
-                                "file": p, "wave": "", "status": status_int,
-                                "create_time": int(create_time), "env": env,
-                                "prompt": metas.get("caption", ""),
-                                "lyrics": metas.get("lyrics", ""),
-                                "metas": {
-                                    "bpm": metas.get("bpm"),
-                                    "duration": metas.get("duration"),
-                                    "genres": metas.get("genres", ""),
-                                    "keyscale": metas.get("keyscale", ""),
-                                    "timesignature": metas.get("timesignature", ""),
-                                }
-                            }
+                            _format_audio_result(
+                                file_path=p, status_int=status_int, create_time=create_time,
+                                env=env, prompt=final_prompt, lyrics=final_lyrics, metas=metas,
+                                generation_info=generation_info, seed_value=seed_value,
+                                lm_model=lm_model, dit_model=dit_model
+                            )
                             for p in audio_paths
-                        ] if audio_paths else [{
-                        "file": "", "wave": "", "status": status_int,
-                        "create_time": int(create_time), "env": env,
-                        "prompt": metas.get("caption", ""),
-                        "lyrics": metas.get("lyrics", ""),
-                        "metas": {
-                            "bpm": metas.get("bpm"),
-                            "duration": metas.get("duration"),
-                            "genres": metas.get("genres", ""),
-                            "keyscale": metas.get("keyscale", ""),
-                            "timesignature": metas.get("timesignature", ""),
-                        }
-                    }]
+                        ] if audio_paths else [_format_audio_result(
+                            file_path="", status_int=status_int, create_time=create_time,
+                            env=env, prompt=final_prompt, lyrics=final_lyrics, metas=metas,
+                            generation_info=generation_info, seed_value=seed_value,
+                            lm_model=lm_model, dit_model=dit_model
+                        )]
                 else:
-                    result_data = [{
-                        "file": "", "wave": "", "status": status_int,
-                        "create_time": int(create_time), "env": env,
-                        "prompt": "", "lyrics": "",
-                        "metas": {},
-                        "error": rec.error if rec.error else None,
-                    }]
+                    # Failed or other status
+                    error_msg = rec.error if rec.error else None
+                    result_data = [_format_audio_result(
+                        file_path="", status_int=status_int, create_time=create_time,
+                        env=env, prompt="", lyrics="", metas={}, error=error_msg
+                    )]
 
                 data_list.append({
                     "task_id": task_id,
@@ -2332,6 +2404,7 @@ def create_app() -> FastAPI:
         job_stats = store.get_stats()
         async with app.state.stats_lock:
             avg_job_seconds = getattr(app.state, "avg_job_seconds", INITIAL_AVG_JOB_SECONDS)
+        
         return _wrap_response({
             "jobs": job_stats,
             "queue_size": app.state.job_queue.qsize(),
