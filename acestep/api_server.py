@@ -28,7 +28,7 @@ import urllib.parse
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from pathlib import Path
 from threading import Lock
 from typing import Any, Dict, List, Literal, Optional
@@ -870,10 +870,19 @@ def _format_audio_result(
         # Override with actual values from detail if present
         if "path" in detail and not file_path:
             res["file"] = detail["path"]
+        sentence_stamps = detail.get("sentence_timestamps", [])
+        token_stamps = detail.get("token_timestamps", [])
+
+        # Convert dataclasses to dicts for JSON serialization
+        if sentence_stamps:
+            sentence_stamps = [asdict(s) if hasattr(s, "__dataclass_fields__") else s for s in sentence_stamps]
+        if token_stamps:
+            token_stamps = [asdict(t) if hasattr(t, "__dataclass_fields__") else t for t in token_stamps]
+
         res.update({
             "lrc": detail.get("lrc", ""),
-            "sentence_timestamps": detail.get("sentence_timestamps", []),
-            "token_timestamps": detail.get("token_timestamps", []),
+            "sentence_timestamps": sentence_stamps,
+            "token_timestamps": token_stamps,
             "lm_score": detail.get("lm_score", 0.0),
             "dit_score": detail.get("dit_score", 0.0),
         })
