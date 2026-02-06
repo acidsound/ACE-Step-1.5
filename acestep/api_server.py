@@ -681,7 +681,12 @@ class _JobStore:
                     stats[rec.status] += 1
             return stats
     
-<<<<<<< HEAD
+    def update_status_text(self, job_id: str, text: str) -> None:
+        with self._lock:
+            if job_id in self._jobs:
+                self._jobs[job_id].status_text = text
+
+
 class LoraManager:
     """Manages user-uploaded LoRA adapters."""
     def __init__(self, lora_root: str):
@@ -736,13 +741,6 @@ class LoraManager:
             # Handle zip if needed, for now assume it's a dir
             pass
         return target_path
-
-=======
-    def update_status_text(self, job_id: str, text: str) -> None:
-        with self._lock:
-            if job_id in self._jobs:
-                self._jobs[job_id].status_text = text
->>>>>>> upstream/main
 
 def _env_bool(name: str, default: bool) -> bool:
     v = os.getenv(name)
@@ -1506,38 +1504,6 @@ def create_app() -> FastAPI:
                 llm_is_initialized = getattr(app.state, "_llm_initialized", False)
                 llm_to_pass = llm if llm_is_initialized else None
 
-<<<<<<< HEAD
-                # Handle LoRA loading if requested
-                lora_loaded_for_this_job = False
-                if req.lora_id:
-                    lora_path = lora_manager.get_lora_path(req.lora_id)
-                    if lora_path:
-                        print(f"[API Server] Loading LoRA {req.lora_id} for job {job_id}")
-                        load_status = h.load_lora(lora_path)
-                        if "✅" in load_status:
-                            h.set_lora_scale(req.lora_scale)
-                            lora_loaded_for_this_job = True
-                        else:
-                            print(f"[API Server] Warning: LoRA load failed: {load_status}")
-                    else:
-                        print(f"[API Server] Warning: LoRA {req.lora_id} not found")
-
-                try:
-                    # Generate music using unified interface
-                    result = generate_music(
-                        dit_handler=h,
-                        llm_handler=llm_to_pass,
-                        params=params,
-                        config=config,
-                        save_dir=app.state.temp_audio_dir,
-                        progress=None,
-                    )
-                finally:
-                    # Unload LoRA after generation to free VRAM or revert to base
-                    if lora_loaded_for_this_job:
-                        print(f"[API Server] Unloading LoRA {req.lora_id} for job {job_id}")
-                        h.unload_lora()
-=======
                 if req.analysis_only:
                     lm_res = llm_to_pass.generate_with_stop_condition(
                         caption=params.caption,
@@ -1570,16 +1536,36 @@ def create_app() -> FastAPI:
                         "dit_model": "None (Analysis Only)"
                     }
 
-                # Generate music using unified interface
-                result = generate_music(
-                    dit_handler=h,
-                    llm_handler=llm_to_pass,
-                    params=params,
-                    config=config,
-                    save_dir=app.state.temp_audio_dir,
-                    progress=None,
-                )
->>>>>>> upstream/main
+                # Handle LoRA loading if requested
+                lora_loaded_for_this_job = False
+                if req.lora_id:
+                    lora_path = lora_manager.get_lora_path(req.lora_id)
+                    if lora_path:
+                        print(f"[API Server] Loading LoRA {req.lora_id} for job {job_id}")
+                        load_status = h.load_lora(lora_path)
+                        if "✅" in load_status:
+                            h.set_lora_scale(req.lora_scale)
+                            lora_loaded_for_this_job = True
+                        else:
+                            print(f"[API Server] Warning: LoRA load failed: {load_status}")
+                    else:
+                        print(f"[API Server] Warning: LoRA {req.lora_id} not found")
+
+                try:
+                    # Generate music using unified interface
+                    result = generate_music(
+                        dit_handler=h,
+                        llm_handler=llm_to_pass,
+                        params=params,
+                        config=config,
+                        save_dir=app.state.temp_audio_dir,
+                        progress=None,
+                    )
+                finally:
+                    # Unload LoRA after generation to free VRAM or revert to base
+                    if lora_loaded_for_this_job:
+                        print(f"[API Server] Unloading LoRA {req.lora_id} for job {job_id}")
+                        h.unload_lora()
 
                 if not result.success:
                     raise RuntimeError(f"Music generation failed: {result.error or result.status_message}")
