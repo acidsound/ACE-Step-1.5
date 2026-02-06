@@ -7,7 +7,7 @@ Tests new features introduced in V1.5, including:
 - LoRA Inference Integration
 
 Usage:
-    python tests/test_api_v15.py --base-url http://127.0.0.1:8000
+    python tests/test_api_v15.py --base-url http://127.0.0.1:8001
 """
 
 import argparse
@@ -24,7 +24,7 @@ from typing import Optional, Dict, Any
 # Configuration
 # =============================================================================
 
-DEFAULT_BASE_URL = "http://127.0.0.1:8000"
+DEFAULT_BASE_URL = "http://127.0.0.1:8001"
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "test_outputs")
 
 # =============================================================================
