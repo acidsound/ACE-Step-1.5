@@ -1405,6 +1405,14 @@ def create_app() -> FastAPI:
                                 "seed_value": seed_value,
                                 "lm_model": lm_model,
                                 "dit_model": dit_model,
+                                "lora_id": result.get("lora_id", ""),
+                                "lora_scale": result.get("lora_scale", 1.0),
+                                "audio_details": result.get("audio_details", {}),
+                                "lrc": result.get("lrc", ""),
+                                "sentence_timestamps": result.get("sentence_timestamps", []),
+                                "token_timestamps": result.get("token_timestamps", []),
+                                "lm_score": result.get("lm_score", 0.0),
+                                "dit_score": result.get("dit_score", 0.0),
                                 "progress": 1.0,
                                 "stage": "succeeded",
                             }
@@ -2169,6 +2177,12 @@ def create_app() -> FastAPI:
                     "lora_id": req.lora_id,
                     "lora_scale": req.lora_scale if req.lora_id else None,
                     "audio_details": audio_details,
+                    # Top-level scores/LRC from first audio for backward compatibility
+                    "lrc": audio_details[0].get("lrc", "") if audio_details else "",
+                    "sentence_timestamps": audio_details[0].get("sentence_timestamps", []) if audio_details else [],
+                    "token_timestamps": audio_details[0].get("token_timestamps", []) if audio_details else [],
+                    "lm_score": audio_details[0].get("lm_score", 0.0) if audio_details else 0.0,
+                    "dit_score": audio_details[0].get("dit_score", 0.0) if audio_details else 0.0,
                 }
 
             t0 = time.time()
