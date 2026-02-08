@@ -2021,10 +2021,11 @@ def create_app() -> FastAPI:
                     p_end = (run_idx + 1) / sequential_runs
                     
                     # Update progress (0.05 to 0.95 range for generation)
-                    def _progress_callback(p):
+                    def _progress_callback(p, msg=None):
                         curr_p = p_start + (p * (p_end - p_start))
                         actual_p = 0.05 + (curr_p * 0.9)
-                        job_store.update_progress_text(job_id, f"Generating {run_idx+1}/{sequential_runs} ({int(p*100)}%)...")
+                        display_msg = msg if msg else f"Generating {run_idx+1}/{sequential_runs} ({int(p*100)}%)..."
+                        job_store.update_progress_text(job_id, display_msg)
                         _update_local_cache_progress(job_id, actual_p, "running")
 
                     result = generate_music(
