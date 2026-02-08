@@ -640,6 +640,13 @@ class JobResult(BaseModel):
     lm_model: Optional[str] = None
     dit_model: Optional[str] = None
 
+    # Extra fields for full result details
+    audio_details: List[Dict[str, Any]] = Field(default_factory=list)
+    prompt: str = ""
+    lyrics: str = ""
+    lora_id: Optional[str] = None
+    lora_scale: Optional[float] = None
+
 
 class JobResponse(BaseModel):
     job_id: str
